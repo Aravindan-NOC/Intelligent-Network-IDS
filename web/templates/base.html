@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Intelligent NIDS - Security Monitoring System{% endblock %}</title>
+    <!-- FontAwesome 6 CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Chart.js 4.4 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- SOC Dark Stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/soc_style.css') }}">
+</head>
+<body>
+    <!-- SIDEBAR -->
+    <aside class="soc-sidebar">
+        <div class="soc-brand">
+            <i class="fa-solid fa-shield-halved soc-brand-icon"></i>
+            <div class="soc-brand-text">
+                <h1>NIDS-SMS</h1>
+                <span>Intelligent SOC</span>
+            </div>
+        </div>
+
+        <nav class="soc-nav">
+            <a href="{{ url_for('views.dashboard') }}" class="soc-nav-item {% if active_page == 'dashboard' %}active{% endif %}">
+                <i class="fa-solid fa-gauge-high"></i>
+                <span>SOC Dashboard</span>
+            </a>
+            <a href="{{ url_for('views.alerts') }}" class="soc-nav-item {% if active_page == 'alerts' %}active{% endif %}">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Security Alerts</span>
+            </a>
+            <a href="{{ url_for('views.packets') }}" class="soc-nav-item {% if active_page == 'packets' %}active{% endif %}">
+                <i class="fa-solid fa-network-wired"></i>
+                <span>Packet Inspector</span>
+            </a>
+            <a href="{{ url_for('views.reports') }}" class="soc-nav-item {% if active_page == 'reports' %}active{% endif %}">
+                <i class="fa-solid fa-file-shield"></i>
+                <span>Audit Reports</span>
+            </a>
+        </nav>
+
+        <div class="soc-sidebar-footer">
+            <div class="system-pill" style="margin-bottom: 6px;">
+                <span id="engine-status-dot" class="status-dot"></span>
+                <span id="engine-status-text">OFFLINE</span>
+            </div>
+            <div class="system-pill" style="border-color: rgba(99, 102, 241, 0.3); background: rgba(99, 102, 241, 0.08);">
+                <span id="ml-status-dot" class="status-dot" style="background: #6366f1; box-shadow: 0 0 8px #6366f1;"></span>
+                <span id="ml-status-text" style="color: #818cf8; font-weight: 600;">ML CORE ACTIVE</span>
+            </div>
+            <p style="margin-top: 8px;">Scapy &bull; Isolation Forest &bull; SQLite WAL</p>
+        </div>
+    </aside>
+
+    <!-- MAIN APP WRAPPER -->
+    <div class="soc-main">
+        <!-- TOP CONTROL BAR -->
+        <header class="soc-header">
+            <div class="soc-header-title">
+                <h2>{% block page_title %}Security Operations Center{% endblock %}</h2>
+                <p>{% block page_subtitle %}Real-Time Network Telemetry & Threat Monitoring{% endblock %}</p>
+            </div>
+
+            <div class="soc-header-actions">
+                <!-- Interface Selector -->
+                <select id="iface-selector" class="select-input" title="Select Network Adapter">
+                    <option value="">Auto-Detect Default</option>
+                    <option value="loopback">Loopback (127.0.0.1)</option>
+                    <option value="Wi-Fi">Wi-Fi Adapter</option>
+                    <option value="Ethernet">Ethernet Adapter</option>
+                </select>
+
+                <!-- Capture Start/Stop Toggle Button -->
+                <button id="btn-toggle-capture" class="btn btn-primary" onclick="toggleCapture()">
+                    <i class="fa-solid fa-play"></i>
+                    <span>Start Capture</span>
+                </button>
+
+                <!-- Simulation Trigger Modal Button -->
+                <button class="btn btn-secondary" onclick="openSimModal()">
+                    <i class="fa-solid fa-crosshairs"></i>
+                    <span>Simulate Attack</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- PAGE CONTENT -->
+        <div class="soc-body">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- ATTACK SIMULATION MODAL -->
+    <div id="sim-modal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-biohazard" style="color: var(--severity-high); margin-right: 8px;"></i>Safe Attack Simulation</h3>
+                <button class="modal-close" onclick="closeSimModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 13px; color: var(--text-secondary);">
+                    Generate controlled test attack bursts strictly against <code>127.0.0.1</code> to verify real-time detection without external network impact.
+                </p>
+                <div class="form-group">
+                    <label for="sim-attack-type">Select Attack Scenario</label>
+                    <select id="sim-attack-type" class="form-control">
+                        <option value="all">Full Arsenal: All 5 Scenarios</option>
+                        <option value="portscan">Scenario 1: TCP Port Scan (20 ports)</option>
+                        <option value="synflood">Scenario 2: TCP SYN Flood Burst (60 pkts)</option>
+                        <option value="icmpflood">Scenario 3: ICMP Ping Flood (50 pkts)</option>
+                        <option value="xmas">Scenario 4: Stealth TCP Xmas Scan (FIN+PSH+URG)</option>
+                        <option value="suspicious">Scenario 5: High-Risk Exploit Port (Metasploit 4444)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSimModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="triggerSimulation()">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span>Launch Attack Burst</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GLOBAL CONTROLLER SCRIPT -->
+    <script>
+        // Check system status on page load
+        async function checkStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                updateStatusUI(data.is_running, data.active_interface, data.ml_engine);
+            } catch (err) {
+                console.error("Status check failed:", err);
+            }
+        }
+
+        function updateStatusUI(isRunning, activeIface, mlEngine) {
+            const dot = document.getElementById('engine-status-dot');
+            const text = document.getElementById('engine-status-text');
+            const btn = document.getElementById('btn-toggle-capture');
+
+            if (isRunning) {
+                dot.classList.add('active');
+                text.textContent = `LIVE: ${activeIface || 'ONLINE'}`;
+                btn.className = 'btn btn-danger';
+                btn.innerHTML = '<i class="fa-solid fa-stop"></i><span>Stop Capture</span>';
+            } else {
+                dot.classList.remove('active');
+                text.textContent = 'OFFLINE / IDLE';
+                btn.className = 'btn btn-primary';
+                btn.innerHTML = '<i class="fa-solid fa-play"></i><span>Start Capture</span>';
+            }
+
+            if (mlEngine && mlEngine.is_loaded) {
+                const mlDot = document.getElementById('ml-status-dot');
+                const mlText = document.getElementById('ml-status-text');
+                if (mlDot && mlText) {
+                    mlDot.style.background = '#10b981';
+                    mlDot.style.boxShadow = '0 0 8px #10b981';
+                    mlText.textContent = 'ML ENGINE ACTIVE';
+                    mlText.style.color = '#34d399';
+                }
+            }
+        }
+
+        async function toggleCapture() {
+            const btn = document.getElementById('btn-toggle-capture');
+            const isCurrentlyRunning = btn.classList.contains('btn-danger');
+            const iface = document.getElementById('iface-selector').value;
+
+            const endpoint = isCurrentlyRunning ? '/api/capture/stop' : '/api/capture/start';
+            const body = isCurrentlyRunning ? {} : { interface: iface || null };
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    checkStatus();
+                } else {
+                    alert(data.message || 'Operation failed');
+                }
+            } catch (err) {
+                alert('Request failed. Ensure Flask server is running.');
+            }
+        }
+
+        // Modal controls
+        function openSimModal() { document.getElementById('sim-modal').classList.add('active'); }
+        function closeSimModal() { document.getElementById('sim-modal').classList.remove('active'); }
+
+        async function triggerSimulation() {
+            const attackType = document.getElementById('sim-attack-type').value;
+            closeSimModal();
+
+            try {
+                const res = await fetch('/api/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ attack: attackType })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    console.log("Simulation triggered:", data.message);
+                }
+            } catch (err) {
+                console.error("Simulation dispatch failed:", err);
+            }
+        }
+
+        // Initialize status poll
+        checkStatus();
+        setInterval(checkStatus, 4000);
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

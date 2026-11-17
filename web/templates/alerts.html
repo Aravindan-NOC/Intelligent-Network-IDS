@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Security Alerts - Intelligent NIDS{% endblock %}
+{% block page_title %}Security Incident Investigation{% endblock %}
+{% block page_subtitle %}Filter, review, acknowledge, and resolve detected intrusion incidents{% endblock %}
+
+{% block content %}
+<!-- FILTER & ACTION TOOLBAR -->
+<div class="card">
+    <div class="card-body" style="padding: 16px 20px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;">
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                <!-- Severity Filter -->
+                <select id="filter-severity" class="select-input" onchange="loadAlerts()">
+                    <option value="">All Severities</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                    <option value="LOW">LOW</option>
+                </select>
+
+                <!-- Attack Type Filter -->
+                <select id="filter-type" class="select-input" onchange="loadAlerts()">
+                    <option value="">All Attack Types</option>
+                    <option value="Port Scan">Port Scan</option>
+                    <option value="SYN Flood">SYN Flood</option>
+                    <option value="ICMP Flood">ICMP Flood</option>
+                    <option value="Suspicious Traffic">Suspicious Traffic</option>
+                </select>
+
+                <!-- Status Filter -->
+                <select id="filter-status" class="select-input" onchange="loadAlerts()">
+                    <option value="">All Statuses</option>
+                    <option value="NEW">NEW</option>
+                    <option value="ACKNOWLEDGED">ACKNOWLEDGED</option>
+                    <option value="RESOLVED">RESOLVED</option>
+                </select>
+
+                <!-- Search Input -->
+                <input type="text" id="filter-search" class="form-control" placeholder="Search IP, Port, or Notes..." style="width: 220px;" onkeyup="if(event.key==='Enter') loadAlerts()">
+                <button class="btn btn-secondary" onclick="loadAlerts()"><i class="fa-solid fa-magnifying-glass"></i> Filter</button>
+            </div>
+
+            <!-- Export Buttons -->
+            <div style="display: flex; gap: 10px;">
+                <a href="/api/export/alerts?format=csv" class="btn btn-secondary"><i class="fa-solid fa-file-csv"></i> Export CSV</a>
+                <a href="/api/export/alerts?format=json" class="btn btn-secondary"><i class="fa-solid fa-code"></i> Export JSON</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- INCIDENT TABLE CARD -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fa-solid fa-shield-virus"></i> Detected Threat Incidents (<span id="alert-total-count">0</span>)</h3>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="soc-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Timestamp</th>
+                        <th>Attack Type</th>
+                        <th>Severity</th>
+                        <th>Source IP:Port</th>
+                        <th>Target IP:Port</th>
+                        <th>Proto</th>
+                        <th>Packets</th>
+                        <th>Status</th>
+                        <th>Mitigation & Action</th>
+                    </tr>
+                </thead>
+                <tbody id="alerts-table-body">
+                    <tr>
+                        <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                            Loading security alerts from SQLite WAL database...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadAlerts() {
+        const severity = document.getElementById('filter-severity').value;
+        const attackType = document.getElementById('filter-type').value;
+        const status = document.getElementById('filter-status').value;
+        const search = document.getElementById('filter-search').value;
+
+        let url = `/api/alerts?limit=100`;
+        if (severity) url += `&severity=${encodeURIComponent(severity)}`;
+        if (attackType) url += `&attack_type=${encodeURIComponent(attackType)}`;
+        if (status) url += `&status=${encodeURIComponent(status)}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            renderAlertsTable(data.alerts);
+        } catch (err) {
+            console.error("Failed to load alerts:", err);
+        }
+    }
+
+    function renderAlertsTable(alerts) {
+        const tbody = document.getElementById('alerts-table-body');
+        document.getElementById('alert-total-count').textContent = alerts.length;
+
+        if (!alerts || alerts.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                        No threat incidents matching current filter criteria.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = alerts.map(a => {
+            const sevClass = a.severity.toLowerCase();
+            return `
+                <tr>
+                    <td>#${a.id}</td>
+                    <td style="color: var(--text-muted);">${a.timestamp}</td>
+                    <td><strong>${a.attack_type}</strong></td>
+                    <td><span class="badge badge-${sevClass}">${a.severity}</span></td>
+                    <td class="code-cell">${a.source_ip}:${a.source_port || ''}</td>
+                    <td class="code-cell">${a.destination_ip}:${a.destination_port || ''}</td>
+                    <td>${a.protocol}</td>
+                    <td><span class="badge badge-info">${a.packet_count}</span></td>
+                    <td><span class="badge" style="background-color: var(--bg-card);">${a.status}</span></td>
+                    <td>
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <span style="font-size: 11px; color: var(--text-secondary); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${a.mitigation_tip}">
+                                ${a.mitigation_tip}
+                            </span>
+                            ${a.status === 'NEW' ? `<button class="btn btn-secondary" style="padding: 3px 8px; font-size: 11px;" onclick="updateStatus(${a.id}, 'ACKNOWLEDGED')">Ack</button>` : ''}
+                            ${a.status !== 'RESOLVED' ? `<button class="btn btn-primary" style="padding: 3px 8px; font-size: 11px;" onclick="updateStatus(${a.id}, 'RESOLVED')">Resolve</button>` : ''}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function updateStatus(alertId, newStatus) {
+        try {
+            const res = await fetch(`/api/alerts/${alertId}/status`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus })
+            });
+            const data = await res.json();
+            if (data.success) {
+                loadAlerts();
+            }
+        } catch (err) {
+            alert("Failed to update status");
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadAlerts);
+</script>
+{% endblock %}

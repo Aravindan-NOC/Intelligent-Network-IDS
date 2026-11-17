@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Packet Inspector - Intelligent NIDS{% endblock %}
+{% block page_title %}Forensic Packet Inspector{% endblock %}
+{% block page_subtitle %}Sampled Layer 2-4 Header Dissections & Wire Diagnostics{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body" style="padding: 16px 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="packet-search" class="form-control" placeholder="Search IP, port or protocol..." style="width: 280px;" onkeyup="if(event.key==='Enter') loadPackets()">
+                <button class="btn btn-secondary" onclick="loadPackets()"><i class="fa-solid fa-magnifying-glass"></i> Filter</button>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <label style="font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <input type="checkbox" id="auto-refresh-toggle" checked>
+                    <span>Auto-Refresh (2s)</span>
+                </label>
+                <button class="btn btn-secondary" onclick="loadPackets()"><i class="fa-solid fa-rotate"></i> Refresh Now</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fa-solid fa-network-wired"></i> Captured Packet Frames (<span id="packet-count-badge">0</span>)</h3>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="soc-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Timestamp</th>
+                        <th>Source IP:Port</th>
+                        <th>Destination IP:Port</th>
+                        <th>Protocol</th>
+                        <th>Wire Length</th>
+                        <th>TCP Flags</th>
+                        <th>Decoded Protocol Summary</th>
+                    </tr>
+                </thead>
+                <tbody id="packets-table-body">
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                            Loading recent packet logs from SQLite...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadPackets() {
+        const search = document.getElementById('packet-search').value;
+        let url = `/api/packets?limit=50`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            renderPacketsTable(data.packets);
+        } catch (err) {
+            console.error("Failed to load packets:", err);
+        }
+    }
+
+    function renderPacketsTable(packets) {
+        const tbody = document.getElementById('packets-table-body');
+        document.getElementById('packet-count-badge').textContent = packets.length;
+
+        if (!packets || packets.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                        No packet logs recorded yet. Start packet capture above to ingest network traffic.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = packets.map(p => `
+            <tr>
+                <td>#${p.id}</td>
+                <td style="color: var(--text-muted);">${p.timestamp}</td>
+                <td class="code-cell">${p.source_ip || 'N/A'}${p.source_port ? ':' + p.source_port : ''}</td>
+                <td class="code-cell">${p.destination_ip || 'N/A'}${p.destination_port ? ':' + p.destination_port : ''}</td>
+                <td><span class="badge badge-info">${p.protocol}</span></td>
+                <td>${p.packet_length} bytes</td>
+                <td><span class="code-cell">${p.tcp_flags || '-'}</span></td>
+                <td style="color: var(--text-secondary); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.info}">
+                    ${p.info}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadPackets();
+        setInterval(() => {
+            if (document.getElementById('auto-refresh-toggle').checked) {
+                loadPackets();
+            }
+        }, 2000);
+    });
+</script>
+{% endblock %}

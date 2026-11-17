@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}SOC Dashboard - Intelligent NIDS{% endblock %}
+{% block page_title %}SOC Command Dashboard{% endblock %}
+{% block page_subtitle %}Live Network Telemetry, Flow Velocity & Threat Intelligence{% endblock %}
+
+{% block content %}
+<!-- KPI METRICS GRID -->
+<div class="metrics-grid">
+    <div class="metric-card">
+        <div class="metric-header">
+            <span>PACKETS / SECOND</span>
+            <i class="fa-solid fa-bolt"></i>
+        </div>
+        <div id="metric-pps" class="metric-value">0.0</div>
+        <div class="metric-sub">Rolling velocity (last 5s)</div>
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-header">
+            <span>TOTAL CAPTURED</span>
+            <i class="fa-solid fa-cubes-stacked"></i>
+        </div>
+        <div id="metric-total-pkts" class="metric-value">0</div>
+        <div class="metric-sub" id="metric-total-bytes">0 KB processed</div>
+    </div>
+
+    <div class="metric-card warning">
+        <div class="metric-header">
+            <span>SECURITY INCIDENTS</span>
+            <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div id="metric-total-alerts" class="metric-value">0</div>
+        <div class="metric-sub">Deduplicated attack episodes</div>
+    </div>
+
+    <div class="metric-card critical">
+        <div class="metric-header">
+            <span>CRITICAL THREATS</span>
+            <i class="fa-solid fa-skull-crossbones"></i>
+        </div>
+        <div id="metric-critical-alerts" class="metric-value">0</div>
+        <div class="metric-sub" style="color: var(--severity-critical);">Immediate action required</div>
+    </div>
+</div>
+
+<!-- CHARTS ROW 1 -->
+<div class="grid-2col">
+    <!-- Real-time Throughput Line Chart -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fa-solid fa-chart-line"></i> Real-Time Traffic Velocity (PPS)</h3>
+            <span class="badge badge-info" id="rolling-status">LIVE STREAM</span>
+        </div>
+        <div class="card-body">
+            <div class="chart-container">
+                <canvas id="trafficChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Protocol Breakdown Doughnut Chart -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fa-solid fa-chart-pie"></i> Protocol Distribution</h3>
+        </div>
+        <div class="card-body">
+            <div class="chart-container">
+                <canvas id="protoChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ROW 2: TOP ATTACKERS & LIVE ALERT TICKER -->
+<div class="grid-equal">
+    <!-- Top Probing IPs Bar Chart -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fa-solid fa-chart-simple"></i> Top Threat Sources</h3>
+        </div>
+        <div class="card-body">
+            <div class="chart-container">
+                <canvas id="attackersChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Alerts Ticker -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fa-solid fa-bell"></i> Live Threat Incident Feed</h3>
+            <a href="{{ url_for('views.alerts') }}" style="font-size: 12px; color: var(--cyber-blue); text-decoration: none;">View All &rarr;</a>
+        </div>
+        <div class="card-body">
+            <div id="alerts-ticker" class="alerts-list">
+                <p style="text-align: center; color: var(--text-muted); font-size: 13px; padding-top: 30px;">
+                    No security incidents detected. System is secure.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

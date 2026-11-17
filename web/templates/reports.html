@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Security Audit Reports - Intelligent NIDS{% endblock %}
+{% block page_title %}Security Audit & Analytics Report{% endblock %}
+{% block page_subtitle %}Executive summaries, threat distributions, and forensic audit exports{% endblock %}
+
+{% block content %}
+<!-- REPORT ACTION HEADER -->
+<div class="card">
+    <div class="card-body" style="padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <h4 style="font-size: 15px; font-weight: 600;">Executive Security Posture</h4>
+            <p style="font-size: 12px; color: var(--text-muted);">Generated automatically from SQLite relational audit logs</p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Print / Save PDF</button>
+            <a href="/api/export/alerts?format=csv" class="btn btn-secondary"><i class="fa-solid fa-file-csv"></i> Download CSV</a>
+            <a href="/api/export/alerts?format=json" class="btn btn-secondary"><i class="fa-solid fa-code"></i> Download JSON</a>
+        </div>
+    </div>
+</div>
+
+<!-- EXECUTIVE SUMMARY CARDS -->
+<div class="metrics-grid">
+    <div class="metric-card">
+        <div class="metric-header">
+            <span>TOTAL AUDITED ALERTS</span>
+            <i class="fa-solid fa-database"></i>
+        </div>
+        <div id="report-total-alerts" class="metric-value">0</div>
+        <div class="metric-sub">Logged in database</div>
+    </div>
+
+    <div class="metric-card critical">
+        <div class="metric-header">
+            <span>CRITICAL SEVERITY</span>
+            <i class="fa-solid fa-radiation"></i>
+        </div>
+        <div id="report-crit-alerts" class="metric-value">0</div>
+        <div class="metric-sub">High priority response required</div>
+    </div>
+
+    <div class="metric-card warning">
+        <div class="metric-header">
+            <span>HIGH SEVERITY</span>
+            <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div id="report-high-alerts" class="metric-value">0</div>
+        <div class="metric-sub">Port scans & flood surges</div>
+    </div>
+
+    <div class="metric-card info">
+        <div class="metric-header">
+            <span>INCIDENT RESOLUTION</span>
+            <i class="fa-solid fa-check-double"></i>
+        </div>
+        <div id="report-resolved-alerts" class="metric-value">0%</div>
+        <div class="metric-sub" id="report-resolved-sub">0 resolved incidents</div>
+    </div>
+</div>
+
+<!-- REPORT DETAILS GRID -->
+<div class="grid-equal">
+    <!-- Threat Distribution Summary -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fa-solid fa-list-check"></i> Threat Classification Breakdown</h3>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <table class="soc-table">
+                <thead>
+                    <tr>
+                        <th>Attack Type</th>
+                        <th>Incident Count</th>
+                        <th>Threat Category</th>
+                    </tr>
+                </thead>
+                <tbody id="report-types-body">
+                    <tr>
+                        <td colspan="3" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                            Loading threat categories...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Top Threat Actors -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fa-solid fa-user-ninja"></i> Top Attacking Source IPs</h3>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <table class="soc-table">
+                <thead>
+                    <tr>
+                        <th>Source IP Address</th>
+                        <th>Incidents</th>
+                        <th>Aggregated Packet Burst</th>
+                    </tr>
+                </thead>
+                <tbody id="report-attackers-body">
+                    <tr>
+                        <td colspan="3" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                            Loading top threat actors...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadReports() {
+        try {
+            const res = await fetch('/api/alerts/summary');
+            const data = await res.json();
+            if (!data.success) return;
+
+            const stats = data.statistics;
+
+            // KPI update
+            document.getElementById('report-total-alerts').textContent = stats.total_alerts;
+            document.getElementById('report-crit-alerts').textContent = stats.severity_counts.CRITICAL || 0;
+            document.getElementById('report-high-alerts').textContent = stats.severity_counts.HIGH || 0;
+
+            const resolved = stats.status_counts.RESOLVED || 0;
+            const total = stats.total_alerts || 1;
+            const pct = Math.round((resolved / total) * 100);
+            document.getElementById('report-resolved-alerts').textContent = `${pct}%`;
+            document.getElementById('report-resolved-sub').textContent = `${resolved} resolved incidents`;
+
+            // Threat types table
+            const typesTbody = document.getElementById('report-types-body');
+            const types = Object.entries(stats.attack_type_distribution || {});
+            if (types.length === 0) {
+                typesTbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 30px;">No threat classifications recorded.</td></tr>`;
+            } else {
+                typesTbody.innerHTML = types.map(([type, cnt]) => `
+                    <tr>
+                        <td><strong>${type}</strong></td>
+                        <td><span class="badge badge-info">${cnt} incidents</span></td>
+                        <td><span class="badge badge-medium">Heuristic Signature</span></td>
+                    </tr>
+                `).join('');
+            }
+
+            // Top threat actors table
+            const attackersTbody = document.getElementById('report-attackers-body');
+            const attackers = stats.top_attackers || [];
+            if (attackers.length === 0) {
+                attackersTbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 30px;">No threat actors detected.</td></tr>`;
+            } else {
+                attackersTbody.innerHTML = attackers.map(a => `
+                    <tr>
+                        <td class="code-cell">${a.source_ip}</td>
+                        <td><span class="badge badge-warning">${a.incident_count} attacks</span></td>
+                        <td>${a.total_packets.toLocaleString()} packets</td>
+                    </tr>
+                `).join('');
+            }
+
+        } catch (err) {
+            console.error("Failed to load report summary:", err);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadReports);
+</script>
+{% endblock %}

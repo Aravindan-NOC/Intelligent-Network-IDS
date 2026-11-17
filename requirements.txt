@@ -1,0 +1,18 @@
+# ==============================================================================
+# Intelligent Network Intrusion Detection & Security Monitoring System (NIDS-SMS)
+# Dependencies specification
+# ==============================================================================
+
+# Core Packet Capture & Processing
+scapy>=2.5.0
+psutil>=5.9.8
+
+# Web Application & REST API
+Flask>=3.0.0
+Flask-Cors>=4.0.0
+
+# Data Science & Machine Learning (Phase 2)
+numpy>=1.26.0
+pandas>=2.1.0
+scikit-learn>=1.4.0
+joblib>=1.3.2
